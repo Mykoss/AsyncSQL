@@ -5,6 +5,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
@@ -30,6 +31,9 @@ class AsyncSqlTest {
             assertNull(db.executeGeneric("create", Map.of()).get(10, TimeUnit.SECONDS));
             InsertResult inserted = db.executeInsert("insert", Map.of("name", "Alice")).get(10, TimeUnit.SECONDS);
             assertEquals(1, inserted.affectedRows());
+            Map<String, Object> nullable = new HashMap<>();
+            nullable.put("name", null);
+            assertEquals(1, db.executeInsert("insert", nullable).get(10, TimeUnit.SECONDS).affectedRows());
             assertEquals("Alice", db.executeSelect("select", Map.of("name", "Alice"))
                     .get(10, TimeUnit.SECONDS).get(0).getString("name"));
             assertEquals(1, db.executeChange("change", Map.of("updated", "Bob", "original", "Alice"))
