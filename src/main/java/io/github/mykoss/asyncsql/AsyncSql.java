@@ -122,10 +122,10 @@ public final class AsyncSql implements AutoCloseable {
         CompletableFuture<T> future = new CompletableFuture<>();
         try {
             workers.execute(() -> {
+                T value;
                 try (Connection connection = source.getConnection()) {
                     connection.setAutoCommit(false);
                     SqlTransaction transaction = new SqlTransaction(connection, queries);
-                    T value;
                     try {
                         value = work.execute(transaction);
                         connection.commit();
@@ -140,7 +140,8 @@ public final class AsyncSql implements AutoCloseable {
                     } finally {
                         transaction.invalidate();
                     }
-                    future.complete(value);
+                }
+                future.complete(value);
                 } catch (Throwable error) {
                     future.completeExceptionally(error);
                 }
@@ -162,11 +163,14 @@ public final class AsyncSql implements AutoCloseable {
         CompletableFuture<T> future = new CompletableFuture<>();
         try {
             workers.execute(() -> {
+                T value;
                 try (Connection connection = source.getConnection();
                      PreparedStatement statement = connection.prepareStatement(query.sql(),
                              generatedKeys ? Statement.RETURN_GENERATED_KEYS : Statement.NO_GENERATED_KEYS)) {
                     query.bind(statement, snapshot);
-                    future.complete(operation.run(statement));
+                    value = operation.run(statement);
+                }
+                future.complete(value);
                 } catch (Exception error) {
                     future.completeExceptionally(error);
                 }

@@ -98,9 +98,16 @@ db.close();
 
 En Nukkit-MOT, adapta la referencia `server` y `plugin` a tus objetos de servidor/plugin. En otros forks, proporciona el `Executor` adecuado para el scheduler del servidor.
 
-## Distribución en servidores
+## Integración directa en Gradle / Maven
 
-**Gradle/Maven resuelven dependencias durante la compilación, pero no las instalan automáticamente en el servidor.** En Nukkit-MOT puede usarse su cargador de librerías Maven de `plugin.yml` si sus reglas de resolución y aislamiento son adecuadas. Para forks sin cargador utiliza un JAR sombreado con Shadow (relocalizando paquetes cuando corresponda). Añade asimismo el driver JDBC necesario. Antes de publicar en Maven Central, el artefacto mostrado arriba es solo una coordenada de desarrollo.
+**No declares AsyncSQL en `plugin.yml`.** En Nukkit-MOT y otros servidores, utiliza la dependencia en `build.gradle.kts` o `pom.xml` del plugin y **empaqueta su ejecución** con Shadow o Maven Shade. El artefacto de AsyncSQL no se encuentra todavía en Maven Central, por lo que en desarrollo debes ejecutar `gradle publishToMavenLocal` en la librería, o usar un repositorio Maven que publiques más adelante.
+
+- [Guía completa Gradle + Shadow](docs/GRADLE.md).
+- [Guía completa Maven + Shade](docs/MAVEN.md).
+
+El `plugin.yml` conserva exclusivamente los metadatos normales del plugin: `name`, `main`, `version`, `api`, etc. **No agregues `libraries`** para AsyncSQL.
+
+El plugin debe incluir los drivers JDBC que utilice. SQLite necesita preservar sus recursos nativos y registros ServiceLoader; el ejemplo evita relocalizar `org.sqlite` y combina los servicios con Shadow/Shade.
 
 ## Limitaciones de esta fase
 

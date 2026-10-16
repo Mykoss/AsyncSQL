@@ -22,6 +22,8 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testRuntimeOnly("org.xerial:sqlite-jdbc:3.49.1.0")
+    testRuntimeOnly("com.mysql:mysql-connector-j:9.2.0")
+    testRuntimeOnly("org.mariadb.jdbc:mariadb-java-client:3.5.2")
     testRuntimeOnly("org.slf4j:slf4j-simple:2.0.17")
 }
 
