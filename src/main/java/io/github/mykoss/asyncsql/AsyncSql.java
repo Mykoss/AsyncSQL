@@ -23,6 +23,9 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletionException;
 
 /**
  * Thread-safe async JDBC query runner. Completion stages run on worker threads
@@ -31,7 +34,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class AsyncSql implements AutoCloseable {
     private final HikariDataSource source;
     private final ExecutorService workers;
-    private final Map<String, NamedStatement> queries;
+    private final Map<String, SqlQuery> queries;
+    private final Set<CompletableFuture<?>> pending = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean closed = new AtomicBoolean();
 
     private AsyncSql(Builder builder) {
@@ -44,9 +48,7 @@ public final class AsyncSql implements AutoCloseable {
         if (builder.workerLimit < 1 || builder.queueLimit < 1) {
             throw new IllegalArgumentException("Worker and queue limits must be positive");
         }
-        Map<String, NamedStatement> compiled = new LinkedHashMap<>();
-        builder.catalog.asMap().forEach((name, sql) -> compiled.put(name, new NamedStatement(sql)));
-        this.queries = Collections.unmodifiableMap(compiled);
+        this.queries = Map.copyOf(builder.catalog.compiledQueries());
 
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(builder.jdbcUrl);
@@ -68,44 +70,35 @@ public final class AsyncSql implements AutoCloseable {
     public static Builder builder(String jdbcUrl) { return new Builder().jdbcUrl(jdbcUrl); }
 
     public CompletableFuture<Void> executeGeneric(String query, Map<String, ?> parameters) {
-        return submit(query, parameters, false, (statement) -> {
-            statement.execute();
-            return null;
-        });
+        return submit(query, parameters, SqlQuery.Mode.GENERIC);
     }
 
     public CompletableFuture<Integer> executeChange(String query, Map<String, ?> parameters) {
-        return submit(query, parameters, false, PreparedStatement::executeUpdate);
+        return submit(query, parameters, SqlQuery.Mode.CHANGE);
     }
 
     public CompletableFuture<InsertResult> executeInsert(String query, Map<String, ?> parameters) {
-        return submit(query, parameters, true, statement -> {
-            int changes = statement.executeUpdate();
-            long id = -1;
-            try (ResultSet keys = statement.getGeneratedKeys()) {
-                if (keys != null && keys.next()) id = keys.getLong(1);
-            } catch (SQLFeatureNotSupportedException ignored) {
-                // Some JDBC drivers do not support generated keys.
-            }
-            return new InsertResult(id, changes);
-        });
+        return submit(query, parameters, SqlQuery.Mode.INSERT);
     }
 
     public CompletableFuture<List<SqlRow>> executeSelect(String query, Map<String, ?> parameters) {
-        return submit(query, parameters, false, statement -> {
-            List<SqlRow> rows = new ArrayList<>();
-            try (ResultSet rs = statement.executeQuery()) {
-                ResultSetMetaData metadata = rs.getMetaData();
-                while (rs.next()) {
-                    Map<String, Object> columns = new LinkedHashMap<>();
-                    for (int i = 1; i <= metadata.getColumnCount(); i++) {
-                        columns.put(metadata.getColumnLabel(i), rs.getObject(i));
-                    }
-                    rows.add(new SqlRow(columns));
-                }
-            }
-            return List.copyOf(rows);
-        });
+        return submit(query, parameters, SqlQuery.Mode.SELECT);
+    }
+
+    /** Snapshot of queries accepted but not yet completed, for diagnostics. */
+    public int pendingCount() { return pending.size(); }
+
+    /**
+     * Returns a future for all work pending at the time this method is called.
+     * New submissions after this call are not included.
+     */
+    public CompletableFuture<Void> awaitPending() {
+        return CompletableFuture.allOf(pending.toArray(new CompletableFuture<?>[0]));
+    }
+
+    /** Blocking equivalent of awaitPending(); do not call on the Minecraft main thread. */
+    public void waitAll() {
+        awaitPending().join();
     }
 
     /**
@@ -119,7 +112,7 @@ public final class AsyncSql implements AutoCloseable {
         if (closed.get()) {
             return CompletableFuture.failedFuture(new IllegalStateException("AsyncSQL is closed"));
         }
-        CompletableFuture<T> future = new CompletableFuture<>();
+        CompletableFuture<T> future = track(new CompletableFuture<>());
         try {
             workers.execute(() -> {
                 try {
@@ -153,33 +146,37 @@ public final class AsyncSql implements AutoCloseable {
         return future;
     }
 
-    private <T> CompletableFuture<T> submit(String name, Map<String, ?> params,
-                                             boolean generatedKeys, SqlOperation<T> operation) {
-        NamedStatement query = queries.get(name);
+    @SuppressWarnings("unchecked")
+    private <T> CompletableFuture<T> submit(String name, Map<String, ?> params, SqlQuery.Mode mode) {
+        SqlQuery query = queries.get(name);
         if (query == null) return CompletableFuture.failedFuture(
                 new IllegalArgumentException("Unknown SQL query: " + name));
         if (closed.get()) return CompletableFuture.failedFuture(
                 new IllegalStateException("AsyncSQL is closed"));
-        Map<String, ?> snapshot = Collections.unmodifiableMap(new LinkedHashMap<>(Objects.requireNonNull(params, "params")));
-        CompletableFuture<T> future = new CompletableFuture<>();
+        Map<String, ?> snapshot = Collections.unmodifiableMap(
+                new LinkedHashMap<>(Objects.requireNonNull(params, "params")));
+        CompletableFuture<T> future = track(new CompletableFuture<>());
         try {
             workers.execute(() -> {
                 try {
-                    T value;
-                    try (Connection connection = source.getConnection();
-                     PreparedStatement statement = connection.prepareStatement(query.sql(),
-                             generatedKeys ? Statement.RETURN_GENERATED_KEYS : Statement.NO_GENERATED_KEYS)) {
-                    query.bind(statement, snapshot);
-                    value = operation.run(statement);
-                }
-                future.complete(value);
-                } catch (Exception error) {
+                    Object value;
+                    try (Connection connection = source.getConnection()) {
+                        value = query.execute(connection, snapshot, mode);
+                    }
+                    future.complete((T) value);
+                } catch (Throwable error) {
                     future.completeExceptionally(error);
                 }
             });
         } catch (RejectedExecutionException error) {
             future.completeExceptionally(error);
         }
+        return future;
+    }
+
+    private <T> CompletableFuture<T> track(CompletableFuture<T> future) {
+        pending.add(future);
+        future.whenComplete((value, error) -> pending.remove(future));
         return future;
     }
 
@@ -194,13 +191,13 @@ public final class AsyncSql implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } finally {
+            if (!workers.isTerminated()) {
+                workers.shutdownNow();
+                pending.forEach(future -> future.completeExceptionally(
+                        new IllegalStateException("AsyncSQL shut down before this query completed")));
+            }
             source.close();
         }
-    }
-
-    @FunctionalInterface
-    private interface SqlOperation<T> {
-        T run(PreparedStatement statement) throws SQLException;
     }
 
     public static final class Builder {

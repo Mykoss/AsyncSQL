@@ -57,7 +57,21 @@ jobs:
         run: |
           mvn -B -ntp -f examples/maven/pom.xml clean package
           java -jar examples/maven/target/asyncsql-maven-smoke-1.0.0.jar
+      - name: Install Java 21 for Nukkit-MOT demo
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Compile shaded Nukkit-MOT beta demo plugin
+        run: |
+          gradle -p examples/nukkit-mot clean shadowJar --no-daemon
+          JAR="$(find examples/nukkit-mot/build/libs -name '*-all.jar' -print -quit)"
+          test -n "$JAR"
+          unzip -l "$JAR" | grep -q 'plugin.yml'
+          unzip -p "$JAR" plugin.yml | grep -q '^main: dev.mykoss.asyncsqlbeta.AsyncSqlBetaPlugin'
       - uses: actions/upload-artifact@v4
         with:
           name: asyncsql-jars
-          path: build/libs/*.jar
+          path: |
+            build/libs/*.jar
+            examples/nukkit-mot/build/libs/*-all.jar

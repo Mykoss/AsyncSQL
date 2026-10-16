@@ -1,0 +1,10 @@
+name: AsyncSQLBetaDemo
+main: dev.mykoss.asyncsqlbeta.AsyncSqlBetaPlugin
+version: "0.1.0-beta"
+api: ["1.0.0"]
+author: Mykoss
+description: In-server validation demo for AsyncSQL on Nukkit-MOT
+commands:
+  asqlbeta:
+    description: Tests PSF statements and an atomic SQLite transaction
+    usage: "/asqlbeta"
