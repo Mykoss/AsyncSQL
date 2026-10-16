@@ -1,6 +1,6 @@
 plugins {
     `java-library`
-    `maven-publish`
+    id("com.vanniktech.maven.publish") version "0.37.0"
 }
 
 group = providers.gradleProperty("group").get()
@@ -12,8 +12,6 @@ repositories {
 
 java {
     toolchain.languageVersion.set(JavaLanguageVersion.of(17))
-    withSourcesJar()
-    withJavadocJar()
 }
 
 dependencies {
@@ -31,26 +29,43 @@ tasks.test {
     useJUnitPlatform()
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("mavenJava") {
-            from(components["java"])
-            artifactId = "asyncsql"
-            pom {
-                name.set("AsyncSQL")
-                description.set("A platform-independent asynchronous JDBC library for Java game server plugins.")
-                url.set("https://github.com/Mykoss/AsyncSQL")
-                licenses {
-                    license {
-                        name.set("Apache License, Version 2.0")
-                        url.set("https://www.apache.org/licenses/LICENSE-2.0")
-                    }
-                }
-                scm {
-                    url.set("https://github.com/Mykoss/AsyncSQL")
-                    connection.set("scm:git:https://github.com/Mykoss/AsyncSQL.git")
-                }
+mavenPublishing {
+    // Explicit coordinates: settings.gradle.kts uses 'AsyncSQL' with uppercase.
+    coordinates("io.github.mykoss", "asyncsql", project.version.toString())
+
+    // Upload to Sonatype Central Portal as USER_MANAGED: the owner must confirm
+    // the final 'Publish' action in https://central.sonatype.com/publishing/deployments .
+    publishToMavenCentral()
+
+    // CI verification and publishToMavenLocal must work without GPG credentials.
+    // Only signing-enabled release jobs supply this property through GitHub Secrets.
+    if (providers.gradleProperty("signingInMemoryKey").isPresent) {
+        signAllPublications()
+    }
+
+    pom {
+        name.set("AsyncSQL")
+        description.set("Platform-independent asynchronous JDBC library for Java Minecraft server plugins.")
+        inceptionYear.set("2026")
+        url.set("https://github.com/Mykoss/AsyncSQL")
+        licenses {
+            license {
+                name.set("The Apache License, Version 2.0")
+                url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
+                distribution.set("repo")
             }
+        }
+        developers {
+            developer {
+                id.set("Mykoss")
+                name.set("Mykoss")
+                url.set("https://github.com/Mykoss")
+            }
+        }
+        scm {
+            url.set("https://github.com/Mykoss/AsyncSQL")
+            connection.set("scm:git:https://github.com/Mykoss/AsyncSQL.git")
+            developerConnection.set("scm:git:ssh://git@github.com/Mykoss/AsyncSQL.git")
         }
     }
 }
