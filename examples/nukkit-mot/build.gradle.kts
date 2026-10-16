@@ -28,6 +28,7 @@ tasks.shadowJar {
     relocate("io.github.mykoss.asyncsql", "dev.mykoss.asyncsqlbeta.libs.asyncsql")
     relocate("com.zaxxer.hikari", "dev.mykoss.asyncsqlbeta.libs.hikari")
     // Never shade Nukkit itself or relocate org.sqlite (contains native resources).
+    // Driver class must remain loadable as org.sqlite.JDBC from the plugin classloader.
 }
 
 tasks.build {

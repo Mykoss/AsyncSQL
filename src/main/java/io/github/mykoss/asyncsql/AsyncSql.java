@@ -52,6 +52,12 @@ public final class AsyncSql implements AutoCloseable {
 
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(builder.jdbcUrl);
+        // DriverManager discovers JDBC drivers from the caller/context classloader.
+        // Plugin classloaders (Nukkit, Bukkit, etc.) may not expose shaded drivers
+        // through Java SPI. Explicit driver class bypasses that discovery path.
+        if (builder.driverClassName != null && !builder.driverClassName.isBlank()) {
+            config.setDriverClassName(builder.driverClassName);
+        }
         if (builder.username != null) config.setUsername(builder.username);
         if (builder.password != null) config.setPassword(builder.password);
         config.setMaximumPoolSize(builder.jdbcUrl.startsWith("jdbc:sqlite:") ? 1 : builder.workerLimit);
@@ -202,6 +208,7 @@ public final class AsyncSql implements AutoCloseable {
 
     public static final class Builder {
         private String jdbcUrl;
+        private String driverClassName;
         private String username;
         private String password;
         private SqlCatalog catalog;
@@ -210,6 +217,8 @@ public final class AsyncSql implements AutoCloseable {
 
         private Builder() {}
         public Builder jdbcUrl(String value) { this.jdbcUrl = value; return this; }
+        /** Optional driver class for shaded JDBC drivers in isolated plugin classloaders. */
+        public Builder driverClassName(String value) { this.driverClassName = value; return this; }
         public Builder username(String value) { this.username = value; return this; }
         public Builder password(String value) { this.password = value; return this; }
         public Builder catalog(SqlCatalog value) { this.catalog = value; return this; }
