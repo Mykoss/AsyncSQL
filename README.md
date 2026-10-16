@@ -11,10 +11,12 @@ Librería **Java** para ejecutar consultas SQL fuera del hilo principal en plugi
 - SQLite, MySQL y MariaDB mediante sus drivers JDBC.
 - Pool de conexiones con HikariCP (un máximo de una conexión para SQLite).
 - Cuatro modos de consulta: `executeGeneric`, `executeChange`, `executeInsert` y `executeSelect`.
-- Archivo de consultas `-- name: identifier` y parámetros seguros como `:uuid`.
+- Consultas `-- name: identifier` y archivos PSF estilo libasynql: dialectos, grupos, variables tipadas, defaults, listas y bloques separados por `-- #&`.
+- Parámetros seguros enlazados con JDBC (`PreparedStatement`); se rechazan valores de tipos incompatibles en PSF.
 - Cola acotada y cantidad configurable de workers para no bloquear el hilo principal.
 - Resultados con `CompletableFuture`; el desarrollador decide en qué hilo ejecutar los callbacks.
 - `close()` para terminar los recursos en `onDisable()`.
+- `executeTransaction()` con rollback ante errores, y `awaitPending()` para esperar las consultas aceptadas.
 
 ## Compilación
 
@@ -98,6 +100,41 @@ db.close();
 
 En Nukkit-MOT, adapta la referencia `server` y `plugin` a tus objetos de servidor/plugin. En otros forks, proporciona el `Executor` adecuado para el scheduler del servidor.
 
+
+### Formato PSF para consultas SQLite/MySQL/MariaDB
+
+Además de `-- name:`, AsyncSQL puede leer el estilo de archivos que utiliza libasynql.
+
+Archivo `db/sqlite.sql` dentro de los recursos del plugin:
+
+```sql
+-- #!sqlite
+-- #{ wallet
+-- #{ ensure
+-- # :uuid string
+-- # :balance int 0
+INSERT OR IGNORE INTO wallet (uuid, balance) VALUES (:uuid, :balance);
+-- #}
+-- #{ find
+-- # :uuid string
+SELECT balance FROM wallet WHERE uuid = :uuid;
+-- #}
+-- #}
+```
+
+Carga de las consultas:
+
+```java
+SqlCatalog catalog = SqlCatalog.fromPsfResource(
+        MyPlugin.class, "/db/sqlite.sql", "sqlite");
+AsyncSql db = AsyncSql.builder("jdbc:sqlite:plugins/MyPlugin/wallet.db")
+        .catalog(catalog).workerLimit(1).build();
+db.executeInsert("wallet.ensure", Map.of("uuid", uuid));
+```
+
+Para MySQL/MariaDB usa un PSF del dialecto correspondiente y selecciona la URL JDBC adecuada. Para llamadas que actualizan un jugador o mundo, despacha las completaciones al hilo principal. Consulta [el plan de beta y sus limitaciones](docs/BETA_TESTING.md).
+
+
 ## Integración directa en Gradle / Maven
 
 **No declares AsyncSQL en `plugin.yml`.** En Nukkit-MOT y otros servidores, utiliza la dependencia en `build.gradle.kts` o `pom.xml` del plugin y **empaqueta su ejecución** con Shadow o Maven Shade. El artefacto de AsyncSQL no se encuentra todavía en Maven Central, por lo que en desarrollo debes ejecutar `gradle publishToMavenLocal` en la librería, o usar un repositorio Maven que publiques más adelante.
@@ -109,10 +146,10 @@ El `plugin.yml` conserva exclusivamente los metadatos normales del plugin: `name
 
 El plugin debe incluir los drivers JDBC que utilice. SQLite necesita preservar sus recursos nativos y registros ServiceLoader; el ejemplo evita relocalizar `org.sqlite` y combina los servicios con Shadow/Shade.
 
-## Limitaciones de esta fase
+## Estado de compatibilidad
 
-No implementa todavía el formato PSF completo de libasynql (declaración de dialectos/grupos/tipos) ni adaptadores específicos para forks. El formato admitido es únicamente `-- name:`. Incluye transacciones JDBC con commit/rollback y pruebas de integración con SQLite, MySQL y MariaDB en GitHub Actions; aún falta una prueba real dentro de Nukkit-MOT.
+El formato PSF de la beta cubre sus funciones habituales, pero **no reproduce todas las APIs PHP de libasynql**. Faltan adaptaciones específicas de logging, algunas variantes avanzadas de resultados y pruebas reales dentro de Nukkit-MOT. Los tests de MySQL/MariaDB en CI usan instancias reales.
 
-Consulta [la guía de publicación en Maven Central](docs/PUBLISHING.md) para lanzar una versión desde GitHub Actions.
+Revisa [la matriz de compatibilidad](docs/COMPATIBILITY.md) y [el plan de pruebas para testers](docs/BETA_TESTING.md). La primera publicación en Maven Central sigue pendiente.
 
 Licencia: [Apache-2.0](LICENSE).
