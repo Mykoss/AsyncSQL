@@ -69,6 +69,10 @@ jobs:
           test -n "$JAR"
           unzip -l "$JAR" | grep -q 'plugin.yml'
           unzip -p "$JAR" plugin.yml | grep -q '^main: dev.mykoss.asyncsqlbeta.AsyncSqlBetaPlugin'
+      - name: Verify shaded SQLite JDBC in isolated plugin classloader
+        run: |
+          JAR="$(find examples/nukkit-mot/build/libs -name '*-all.jar' -print -quit)"
+          java examples/nukkit-mot/verification/IsolatedSqliteSmoke.java "$JAR"
       - uses: actions/upload-artifact@v4
         with:
           name: asyncsql-jars

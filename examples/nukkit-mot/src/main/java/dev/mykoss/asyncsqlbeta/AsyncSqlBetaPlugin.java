@@ -28,17 +28,22 @@ public final class AsyncSqlBetaPlugin extends PluginBase {
             return;
         }
         try {
+            // Java DriverManager looks in the context/app classloader by default,
+            // not necessarily in the plugin's isolated classloader.
+            // Force-load the JDBC implementation from this plugin's shaded JAR.
+            Class.forName("org.sqlite.JDBC", true, getClass().getClassLoader());
             SqlCatalog queries = SqlCatalog.fromPsfResource(
                     AsyncSqlBetaPlugin.class, "/db/sqlite.sql", "sqlite");
             database = AsyncSql.builder("jdbc:sqlite:" + new File(dataFolder, "wallets.db").getAbsolutePath())
+                    .driverClassName("org.sqlite.JDBC")
                     .catalog(queries).workerLimit(1).queueLimit(128).build();
             database.executeGeneric("schema.init", Map.of())
                     .whenCompleteAsync((ignored, error) -> {
-                        if (error != null) getLogger().error("SQLite schema init failed: " + error);
+                        if (error != null) getLogger().error("SQLite schema init failed", error);
                         else getLogger().info("AsyncSQL beta database initialized");
                     }, mainThread());
         } catch (Exception error) {
-            getLogger().error("AsyncSQL initialization failed: " + error);
+            getLogger().error("AsyncSQL initialization failed", error);
             getServer().getPluginManager().disablePlugin(this);
         }
     }

@@ -30,7 +30,8 @@ Esta beta es una **implementación nueva de Java/JDBC inspirada en libasynql**. 
 6. Reinicia el servidor, vuelve a ejecutar el comando y comprueba que el siguiente número sea 4.
 7. Comprueba que otros jugadores tengan su propio contador y que el hilo principal siga respondiendo.
 8. Realiza el test de reinicio durante varias consultas y recoge logs si aparecen excepciones.
-9. Para MySQL/MariaDB hay pruebas CI; comprueba manualmente también tu configuración real de hosting y credenciales.
+9. Si aparece `Failed to get driver instance for jdbcUrl=jdbc:sqlite:`, instala el JAR corregido de este demo: registra explícitamente `org.sqlite.JDBC` en el classloader del plugin, y proporciona `driverClassName("org.sqlite.JDBC")` a HikariCP. Si persiste, entrega la excepción completa (incluidos `Caused by`) de Nukkit-MOT para diagnosticar la carga nativa o recursos.
+10. Para MySQL/MariaDB hay pruebas CI; comprueba manualmente también tu configuración real de hosting y credenciales.
 
 ## Cómo consumirla en un plugin
 
