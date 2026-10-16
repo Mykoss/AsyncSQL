@@ -115,7 +115,7 @@ public final class AsyncSql implements AutoCloseable {
                 new IllegalArgumentException("Unknown SQL query: " + name));
         if (closed.get()) return CompletableFuture.failedFuture(
                 new IllegalStateException("AsyncSQL is closed"));
-        Map<String, ?> snapshot = Map.copyOf(Objects.requireNonNull(params, "params"));
+        Map<String, ?> snapshot = Collections.unmodifiableMap(new LinkedHashMap<>(Objects.requireNonNull(params, "params")));
         CompletableFuture<T> future = new CompletableFuture<>();
         try {
             workers.execute(() -> {
