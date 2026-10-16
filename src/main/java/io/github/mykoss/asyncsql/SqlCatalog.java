@@ -5,12 +5,14 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
 /** Named SQL queries, declared using '-- name: query.id' markers. */
 public final class SqlCatalog {
     private final Map<String, String> queries = new LinkedHashMap<>();
+    private final Map<String, SqlQuery> compiled = new LinkedHashMap<>();
 
     public SqlCatalog register(String name, String sql) {
         Objects.requireNonNull(name, "name");
@@ -22,11 +24,43 @@ public final class SqlCatalog {
             throw new IllegalArgumentException("Empty or duplicate query: " + name);
         }
         queries.put(name, sql.trim());
+        compiled.put(name, new SqlQuery(List.of(sql.trim()), Map.of()));
         return this;
     }
 
     public Map<String, String> asMap() {
         return Collections.unmodifiableMap(queries);
+    }
+
+
+    /** Parse libasynql-style PSF commands for one SQL dialect. */
+    public static SqlCatalog parsePsf(String psf, String dialect) {
+        return PsfParser.parse(psf, dialect);
+    }
+
+    /** Load a PSF file directly from a plugin JAR (no filesystem copies required). */
+    public static SqlCatalog fromPsfResource(Class<?> type, String path, String dialect) {
+        Objects.requireNonNull(type, "type");
+        try (InputStream stream = type.getResourceAsStream(path)) {
+            if (stream == null) throw new IllegalArgumentException("PSF resource not found: " + path);
+            return parsePsf(new String(stream.readAllBytes(), StandardCharsets.UTF_8), dialect);
+        } catch (IOException e) {
+            throw new IllegalStateException("Cannot read PSF resource: " + path, e);
+        }
+    }
+
+    void registerPsf(String name, List<String> fragments, Map<String, PsfVariable> declarations) {
+        Objects.requireNonNull(name, "name");
+        if (name.isBlank() || queries.containsKey(name)) {
+            throw new IllegalArgumentException("Duplicate/empty PSF query name: " + name);
+        }
+        SqlQuery query = new SqlQuery(fragments, declarations);
+        queries.put(name, String.join("\n-- #&\n", fragments));
+        compiled.put(name, query);
+    }
+
+    Map<String, SqlQuery> compiledQueries() {
+        return Collections.unmodifiableMap(compiled);
     }
 
     public static SqlCatalog parse(String content) {

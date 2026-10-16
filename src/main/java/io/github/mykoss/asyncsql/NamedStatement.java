@@ -3,6 +3,8 @@ package io.github.mykoss.asyncsql;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -11,11 +13,13 @@ import java.util.Objects;
 final class NamedStatement {
     private final String sql;
     private final List<String> keys;
+    private final List<Integer> offsets;
 
     NamedStatement(String source) {
         Objects.requireNonNull(source, "source");
         StringBuilder result = new StringBuilder();
         List<String> parameters = new ArrayList<>();
+        List<Integer> positions = new ArrayList<>();
         int state = 0; // 0 SQL, 1 single quote, 2 double quote, 3 backtick, 4 line comment, 5 block comment
         for (int i = 0; i < source.length(); i++) {
             char ch = source.charAt(i);
@@ -39,6 +43,7 @@ final class NamedStatement {
                     int end = i + 2;
                     while (end < source.length() && isPart(source.charAt(end))) end++;
                     parameters.add(source.substring(i + 1, end));
+                    positions.add(result.length());
                     result.append('?');
                     i = end - 1;
                 } else {
@@ -67,6 +72,7 @@ final class NamedStatement {
         }
         this.sql = result.toString();
         this.keys = List.copyOf(parameters);
+        this.offsets = List.copyOf(positions);
     }
 
     String sql() { return sql; }
@@ -84,6 +90,51 @@ final class NamedStatement {
             statement.setObject(i + 1, value);
         }
     }
+
+
+    /** Expands typed PSF lists into safely bound positional JDBC arguments. */
+    Plan plan(Map<String, ?> params, Map<String, PsfVariable> declarations) {
+        Objects.requireNonNull(params, "params");
+        StringBuilder expanded = new StringBuilder();
+        List<Object> values = new ArrayList<>();
+        int prev = 0;
+        for (int i = 0; i < keys.size(); i++) {
+            String key = keys.get(i);
+            PsfVariable variable = declarations.get(key);
+            Object value;
+            if (params.containsKey(key)) value = params.get(key);
+            else if (variable != null && variable.optional) value = variable.defaultValue;
+            else throw new IllegalArgumentException("Missing SQL parameter: " + key);
+            expanded.append(sql, prev, offsets.get(i));
+            if (variable != null && variable.list) {
+                if (!(value instanceof Collection<?> items)) {
+                    throw new IllegalArgumentException("Expected a Collection for PSF list :" + key);
+                }
+                if (items.isEmpty() && !variable.emptyAllowed) {
+                    throw new IllegalArgumentException("Empty PSF list not allowed: " + key);
+                }
+                expanded.append('(');
+                if (items.isEmpty()) expanded.append("NULL"); // IN (NULL) matches no rows
+                int pos = 0;
+                for (Object item : items) {
+                    if (pos++ > 0) expanded.append(',');
+                    expanded.append('?');
+                    values.add(variable.normalize(item));
+                }
+                expanded.append(')');
+            } else {
+                expanded.append('?');
+                Object converted = variable == null ? value : variable.normalize(value);
+                if (converted instanceof java.util.UUID uuid) converted = uuid.toString();
+                values.add(converted);
+            }
+            prev = offsets.get(i) + 1;
+        }
+        expanded.append(sql, prev, sql.length());
+        return new Plan(expanded.toString(), Collections.unmodifiableList(values));
+    }
+
+    record Plan(String sql, List<Object> arguments) {}
 
     private static boolean isStart(char ch) {
         return ch == '_' || ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z';
