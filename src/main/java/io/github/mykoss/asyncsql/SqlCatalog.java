@@ -54,7 +54,7 @@ public final class SqlCatalog {
         if (name.isBlank() || queries.containsKey(name)) {
             throw new IllegalArgumentException("Duplicate/empty PSF query name: " + name);
         }
-        SqlQuery query = new SqlQuery(fragments, declarations);
+        SqlQuery query = new SqlQuery(fragments, declarations, true);
         queries.put(name, String.join("\n-- #&\n", fragments));
         compiled.put(name, query);
     }
