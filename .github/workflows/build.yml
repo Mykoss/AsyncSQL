@@ -49,6 +49,14 @@ jobs:
           gradle-version: '8.14.3'
       - name: Compile and run tests
         run: gradle clean build publishToMavenLocal --no-daemon
+      - name: Smoke test Gradle Shadow integration
+        run: |
+          gradle -p examples/gradle clean shadowJar --no-daemon
+          java -jar "$(find examples/gradle/build/libs -name '*-all.jar' -print -quit)"
+      - name: Smoke test Maven Shade integration
+        run: |
+          mvn -B -ntp -f examples/maven/pom.xml clean package
+          java -jar examples/maven/target/asyncsql-maven-smoke-1.0.0.jar
       - uses: actions/upload-artifact@v4
         with:
           name: asyncsql-jars
