@@ -20,10 +20,14 @@ final class SqlQuery {
     private final Map<String, PsfVariable> variables;
 
     SqlQuery(List<String> statements, Map<String, PsfVariable> variables) {
+        this(statements, variables, false);
+    }
+
+    SqlQuery(List<String> statements, Map<String, PsfVariable> variables, boolean isPsf) {
         if (statements.isEmpty()) throw new IllegalArgumentException("A query needs SQL");
         this.statements = statements.stream().map(NamedStatement::new).toList();
         this.variables = Collections.unmodifiableMap(new LinkedHashMap<>(variables));
-        if (!this.variables.isEmpty()) {
+        if (isPsf) {
             for (PsfVariable var : variables.values()) {
                 boolean used = this.statements.stream().anyMatch(stmt -> stmt.keys().contains(var.name));
                 if (!used) throw new IllegalArgumentException("Declared PSF variable is not used: " + var.name);
