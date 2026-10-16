@@ -122,8 +122,9 @@ public final class AsyncSql implements AutoCloseable {
         CompletableFuture<T> future = new CompletableFuture<>();
         try {
             workers.execute(() -> {
-                T value;
-                try (Connection connection = source.getConnection()) {
+                try {
+                    T value;
+                    try (Connection connection = source.getConnection()) {
                     connection.setAutoCommit(false);
                     SqlTransaction transaction = new SqlTransaction(connection, queries);
                     try {
@@ -163,8 +164,9 @@ public final class AsyncSql implements AutoCloseable {
         CompletableFuture<T> future = new CompletableFuture<>();
         try {
             workers.execute(() -> {
-                T value;
-                try (Connection connection = source.getConnection();
+                try {
+                    T value;
+                    try (Connection connection = source.getConnection();
                      PreparedStatement statement = connection.prepareStatement(query.sql(),
                              generatedKeys ? Statement.RETURN_GENERATED_KEYS : Statement.NO_GENERATED_KEYS)) {
                     query.bind(statement, snapshot);
