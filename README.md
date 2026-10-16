@@ -4,7 +4,7 @@ Librería **Java** para ejecutar consultas SQL fuera del hilo principal en plugi
 
 ## Estado
 
-**0.1.0-SNAPSHOT — desarrollo.** No se ha publicado en Maven Central ni se garantiza compatibilidad con todos los forks. El artefacto no incluye controladores JDBC; añádelos en tu plugin. El código núcleo no importa ninguna API de Nukkit.
+**0.1.0-SNAPSHOT — desarrollo.** La publicación en Maven Central está preparada pero la primera versión pública todavía no se ha enviado; no se garantiza compatibilidad con todos los forks. El artefacto no incluye controladores JDBC; añádelos en tu plugin. El código núcleo no importa ninguna API de Nukkit.
 
 ## Funciones iniciales
 
@@ -111,6 +111,8 @@ El plugin debe incluir los drivers JDBC que utilice. SQLite necesita preservar s
 
 ## Limitaciones de esta fase
 
-No implementa todavía el formato PSF completo de libasynql (declaración de dialectos/grupos/tipos), transacciones compuestas ni adaptadores específicos para forks. El formato admitido es únicamente `-- name:`. Las pruebas unitarias usan SQLite; falta validar MySQL/MariaDB con un servidor real.
+No implementa todavía el formato PSF completo de libasynql (declaración de dialectos/grupos/tipos) ni adaptadores específicos para forks. El formato admitido es únicamente `-- name:`. Incluye transacciones JDBC con commit/rollback y pruebas de integración con SQLite, MySQL y MariaDB en GitHub Actions; aún falta una prueba real dentro de Nukkit-MOT.
+
+Consulta [la guía de publicación en Maven Central](docs/PUBLISHING.md) para lanzar una versión desde GitHub Actions.
 
 Licencia: [Apache-2.0](LICENSE).
