@@ -108,6 +108,51 @@ public final class AsyncSql implements AutoCloseable {
         });
     }
 
+    /**
+     * Performs a group of SQL operations atomically on a single JDBC connection.
+     * The transaction callback runs on an AsyncSQL worker, never on the game thread.
+     * Do not retain the transaction object or block inside it on other AsyncSQL futures.
+     * Any exception (including failed COMMIT) triggers ROLLBACK.
+     */
+    public <T> CompletableFuture<T> executeTransaction(SqlTransaction.Work<T> work) {
+        Objects.requireNonNull(work, "work");
+        if (closed.get()) {
+            return CompletableFuture.failedFuture(new IllegalStateException("AsyncSQL is closed"));
+        }
+        CompletableFuture<T> future = new CompletableFuture<>();
+        try {
+            workers.execute(() -> {
+                try {
+                    T value;
+                    try (Connection connection = source.getConnection()) {
+                    connection.setAutoCommit(false);
+                    SqlTransaction transaction = new SqlTransaction(connection, queries);
+                    try {
+                        value = work.execute(transaction);
+                        connection.commit();
+                    } catch (Throwable error) {
+                        try {
+                            connection.rollback();
+                        } catch (SQLException rollbackError) {
+                            error.addSuppressed(rollbackError);
+                        }
+                        future.completeExceptionally(error);
+                        return;
+                    } finally {
+                        transaction.invalidate();
+                    }
+                }
+                future.complete(value);
+                } catch (Throwable error) {
+                    future.completeExceptionally(error);
+                }
+            });
+        } catch (RejectedExecutionException error) {
+            future.completeExceptionally(error);
+        }
+        return future;
+    }
+
     private <T> CompletableFuture<T> submit(String name, Map<String, ?> params,
                                              boolean generatedKeys, SqlOperation<T> operation) {
         NamedStatement query = queries.get(name);
@@ -119,11 +164,15 @@ public final class AsyncSql implements AutoCloseable {
         CompletableFuture<T> future = new CompletableFuture<>();
         try {
             workers.execute(() -> {
-                try (Connection connection = source.getConnection();
+                try {
+                    T value;
+                    try (Connection connection = source.getConnection();
                      PreparedStatement statement = connection.prepareStatement(query.sql(),
                              generatedKeys ? Statement.RETURN_GENERATED_KEYS : Statement.NO_GENERATED_KEYS)) {
                     query.bind(statement, snapshot);
-                    future.complete(operation.run(statement));
+                    value = operation.run(statement);
+                }
+                future.complete(value);
                 } catch (Exception error) {
                     future.completeExceptionally(error);
                 }

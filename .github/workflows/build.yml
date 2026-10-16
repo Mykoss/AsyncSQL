@@ -10,6 +10,34 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: asyncsql_test
+          MYSQL_ROOT_PASSWORD: testpass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -ptestpass"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: asyncsql_test
+          MARIADB_ROOT_PASSWORD: testpass
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    env:
+      ASYNCSQL_TEST_MYSQL_URL: jdbc:mysql://127.0.0.1:3306/asyncsql_test?sslMode=DISABLED&allowPublicKeyRetrieval=true
+      ASYNCSQL_TEST_MYSQL_USER: root
+      ASYNCSQL_TEST_MYSQL_PASSWORD: testpass
+      ASYNCSQL_TEST_MARIADB_URL: jdbc:mariadb://127.0.0.1:3307/asyncsql_test
+      ASYNCSQL_TEST_MARIADB_USER: root
+      ASYNCSQL_TEST_MARIADB_PASSWORD: testpass
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -21,6 +49,14 @@ jobs:
           gradle-version: '8.14.3'
       - name: Compile and run tests
         run: gradle clean build publishToMavenLocal --no-daemon
+      - name: Smoke test Gradle Shadow integration
+        run: |
+          gradle -p examples/gradle clean shadowJar --no-daemon
+          java -jar "$(find examples/gradle/build/libs -name '*-all.jar' -print -quit)"
+      - name: Smoke test Maven Shade integration
+        run: |
+          mvn -B -ntp -f examples/maven/pom.xml clean package
+          java -jar examples/maven/target/asyncsql-maven-smoke-1.0.0.jar
       - uses: actions/upload-artifact@v4
         with:
           name: asyncsql-jars
