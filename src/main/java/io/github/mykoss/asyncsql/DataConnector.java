@@ -56,7 +56,7 @@ public interface DataConnector extends AutoCloseable {
 
     /** Internal-style raw API; parameterized SQL, one mode per statement. */
     void executeImplRaw(List<String> sql, List<Map<String, ?>> args, List<Integer> modes,
-                        Consumer<List<Object>> handler, Consumer<SqlError> onError);
+                        Consumer<List<SqlResult>> handler, Consumer<SqlError> onError);
 
     CompletableFuture<Void> asyncGeneric(String name, Map<String, ?> args);
     CompletableFuture<Integer> asyncChange(String name, Map<String, ?> args);
