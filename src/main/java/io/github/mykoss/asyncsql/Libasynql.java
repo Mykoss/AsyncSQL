@@ -29,7 +29,7 @@ public final class Libasynql {
         Objects.requireNonNull(config, "config");
         Objects.requireNonNull(sqlFiles, "sqlFiles");
         Objects.requireNonNull(callbackExecutor, "callbackExecutor");
-        String dialect = String.valueOf(config.getOrDefault("type", "sqlite")).toLowerCase(Locale.ROOT);
+        String dialect = String.valueOf(or(config, "type", "sqlite")).toLowerCase(Locale.ROOT);
         if (dialect.equals("sqlite3") || dialect.equals("sq3")) dialect = "sqlite";
         if (dialect.equals("mysqli")) dialect = "mysql";
         if (!List.of("sqlite", "mysql", "mariadb").contains(dialect)) {
@@ -42,15 +42,15 @@ public final class Libasynql {
         String driver;
         String username = null, password = null;
         if (dialect.equals("sqlite")) {
-            String filename = String.valueOf(settings.getOrDefault("file", "data.sqlite"));
+            String filename = String.valueOf(or(settings, "file", "data.sqlite"));
             Path db = Path.of(filename);
             if (!db.isAbsolute()) db = dataFolder.resolve(db);
             db = db.normalize();
             url = "jdbc:sqlite:" + db.toAbsolutePath();
             driver = "org.sqlite.JDBC";
         } else {
-            String host = String.valueOf(settings.getOrDefault("host", "127.0.0.1"));
-            String database = String.valueOf(settings.getOrDefault("schema", ""));
+            String host = String.valueOf(or(settings, "host", "127.0.0.1"));
+            String database = String.valueOf(or(settings, "schema", ""));
             if (database.isBlank() || host.isBlank() || !database.matches("[A-Za-z0-9_]+")) {
                 throw new IllegalArgumentException("Invalid MySQL/MariaDB host or schema");
             }
@@ -59,8 +59,8 @@ public final class Libasynql {
             url = "jdbc:" + dialect + "://" + host + ":" + port + "/" + database;
             driver = dialect.equals("mysql") ? "com.mysql.cj.jdbc.Driver"
                     : "org.mariadb.jdbc.Driver";
-            username = String.valueOf(settings.getOrDefault("username", ""));
-            password = String.valueOf(settings.getOrDefault("password", ""));
+            username = String.valueOf(or(settings, "username", ""));
+            password = String.valueOf(or(settings, "password", ""));
         }
 
         String resourceDialect = dialect;
@@ -95,6 +95,11 @@ public final class Libasynql {
         DataConnectorImpl connector = new DataConnectorImpl(builder.build(), dialect, callbackExecutor, logger);
         connector.setLoggingQueries(Boolean.TRUE.equals(config.get("log-queries")));
         return connector;
+    }
+
+    private static Object or(Map<?, ?> source, String key, Object fallback) {
+        Object value = source.get(key);
+        return value == null ? fallback : value;
     }
 
     private static int number(Object value, int fallback) {

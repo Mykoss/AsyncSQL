@@ -59,6 +59,14 @@ public final class SqlCatalog {
         compiled.put(name, query);
     }
 
+    /** Internal merge preserving PSF variable declarations and multi-fragment statement structure. */
+    void mergePsfQuery(String name, SqlQuery query, String sql) {
+        Objects.requireNonNull(query, "query");
+        if (queries.containsKey(name)) throw new IllegalArgumentException("Duplicate SQL query: " + name);
+        queries.put(name, sql);
+        compiled.put(name, query);
+    }
+
     Map<String, SqlQuery> compiledQueries() {
         return Collections.unmodifiableMap(compiled);
     }
