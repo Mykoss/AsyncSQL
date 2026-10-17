@@ -20,8 +20,9 @@ class LibasynqlCompatibilityTest {
     @TempDir Path temp;
 
     @Test void configFactoryCallbacksMetadataMultiAndReloadWork() throws Exception {
-        try (ExecutorService main = Executors.newSingleThreadExecutor(
-                task -> new Thread(task, "nukkit-main-test"))) {
+        ExecutorService main = Executors.newSingleThreadExecutor(
+                task -> new Thread(task, "nukkit-main-test"));
+        try {
             DataConnector db = Libasynql.create(temp, getClass(),
                     Map.of("type", "sqlite", "sqlite", Map.of("file", "compat.db"),
                             "worker-limit", 1),
@@ -81,6 +82,8 @@ class LibasynqlCompatibilityTest {
                 assertEquals("compat.missing", sqlError.get(10, TimeUnit.SECONDS).getQuery());
                 assertNotNull(sqlError.get(10, TimeUnit.SECONDS).getCause());
             }
+        } finally {
+            main.shutdownNow();
         }
     }
 

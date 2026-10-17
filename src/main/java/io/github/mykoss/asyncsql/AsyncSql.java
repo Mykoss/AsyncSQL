@@ -156,8 +156,10 @@ public final class AsyncSql implements AutoCloseable {
                 .map(s -> new SqlQuery(List.of(s), Map.of())).toList();
         List<SqlQuery.Mode> parsed = modes.stream()
                 .map(m -> SqlQuery.Mode.valueOf(m.toUpperCase(java.util.Locale.ROOT))).toList();
-        List<Map<String, ?>> values = params.stream().map(p ->
-                (Map<String, ?>) Collections.unmodifiableMap(new LinkedHashMap<>(p))).toList();
+        List<Map<String, ?>> values = new ArrayList<>();
+        for (Map<String, ?> parameterSet : params) {
+            values.add(Collections.unmodifiableMap(new LinkedHashMap<>(parameterSet)));
+        }
         CompletableFuture<List<Object>> future = track(new CompletableFuture<>());
         try {
             workers.execute(() -> {
