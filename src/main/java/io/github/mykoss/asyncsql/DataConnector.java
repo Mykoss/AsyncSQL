@@ -40,6 +40,10 @@ public interface DataConnector extends AutoCloseable {
                        BiConsumer<Long, Integer> onInserted, Consumer<SqlError> onError);
     void executeSelect(String name, Map<String, ?> args,
                        Consumer<List<SqlRow>> onSuccess, Consumer<SqlError> onError);
+    /** Optional 2-argument success callback, matching libasynql's rows/columns shape. */
+    void executeSelect(String name, Map<String, ?> args,
+                       BiConsumer<List<SqlRow>, List<SqlColumnInfo>> onSuccess,
+                       Consumer<SqlError> onError);
     void executeSelectWithInfo(String name, Map<String, ?> args,
                                Consumer<SqlSelectResult> onSuccess, Consumer<SqlError> onError);
 
@@ -48,7 +52,7 @@ public interface DataConnector extends AutoCloseable {
      * mode is the mode of the final fragment; earlier fragments are GENERIC.
      */
     void executeMulti(String name, Map<String, ?> args, int mode,
-                      Consumer<List<Object>> handler, Consumer<SqlError> onError);
+                      Consumer<List<SqlResult>> handler, Consumer<SqlError> onError);
 
     /** Internal-style raw API; parameterized SQL, one mode per statement. */
     void executeImplRaw(List<String> sql, List<Map<String, ?>> args, List<Integer> modes,
@@ -73,7 +77,7 @@ public interface DataConnector extends AutoCloseable {
         executeInsert(name, args, null, null);
     }
     default void executeSelect(String name, Map<String, ?> args) {
-        executeSelect(name, args, null, null);
+        executeSelect(name, args, (Consumer<List<SqlRow>>) null, null);
     }
 
     @Override void close();

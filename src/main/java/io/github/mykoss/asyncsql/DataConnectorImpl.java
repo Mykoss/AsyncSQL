@@ -119,21 +119,44 @@ public final class DataConnectorImpl implements DataConnector {
                                         Consumer<List<SqlRow>> success, Consumer<SqlError> onError) {
         handle(name, args, asyncSelect(name, args), success, onError);
     }
+    @Override public void executeSelect(String name, Map<String, ?> args,
+                                        BiConsumer<List<SqlRow>, List<SqlColumnInfo>> success,
+                                        Consumer<SqlError> onError) {
+        handle(name, args, asyncSelectWithInfo(name, args), info -> {
+            if (success != null) success.accept(info.getRows(), info.getColumnInfo());
+        }, onError);
+    }
     @Override public void executeSelectWithInfo(String name, Map<String, ?> args,
                                                 Consumer<SqlSelectResult> success, Consumer<SqlError> onError) {
         handle(name, args, asyncSelectWithInfo(name, args), success, onError);
     }
     @Override public void executeMulti(String name, Map<String, ?> args, int mode,
-                                       Consumer<List<Object>> handler, Consumer<SqlError> onError) {
+                                       Consumer<List<SqlResult>> handler, Consumer<SqlError> onError) {
         trace(name);
-        handle(name, args, sql.executeMulti(name, args, List.of(nameOf(mode))), handler, onError);
+        String sqlMode = nameOf(mode);
+        if (sqlMode.equals("SELECT")) sqlMode = "SELECT_INFO";
+        handle(name, args, sql.executeMulti(name, args, List.of(sqlMode)).thenApply(
+                DataConnectorImpl::convertResults), handler, onError);
     }
     @Override public void executeImplRaw(List<String> statements, List<Map<String, ?>> args,
-                                          List<Integer> modes, Consumer<List<Object>> handler,
+                                          List<Integer> modes, Consumer<List<SqlResult>> handler,
                                           Consumer<SqlError> onError) {
         trace("<raw>");
         handle("<raw>", Map.of(), sql.executeImplRaw(statements, args,
-                modes.stream().map(DataConnectorImpl::nameOf).toList()), handler, onError);
+                modes.stream().map(DataConnectorImpl::nameOf)
+                        .map(m -> m.equals("SELECT") ? "SELECT_INFO" : m).toList())
+                .thenApply(DataConnectorImpl::convertResults), handler, onError);
+    }
+
+    private static List<SqlResult> convertResults(List<Object> raw) {
+        return raw.stream().map(value -> {
+            if (value == null) return (SqlResult) new SqlGenericResult();
+            if (value instanceof Integer changed) return (SqlResult) new SqlChangeResult(changed);
+            if (value instanceof InsertResult inserted) return (SqlResult)
+                    new SqlInsertResult(inserted.generatedId(), inserted.affectedRows());
+            if (value instanceof SqlSelectResult selected) return (SqlResult) selected;
+            throw new IllegalStateException("Unexpected SQL result type: " + value.getClass());
+        }).toList();
     }
 
     @Override public CompletableFuture<Void> asyncGeneric(String name, Map<String, ?> args) {

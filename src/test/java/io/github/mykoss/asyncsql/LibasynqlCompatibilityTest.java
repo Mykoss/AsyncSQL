@@ -45,23 +45,24 @@ class LibasynqlCompatibilityTest {
                 assertEquals(2, info.getColumnInfo().size());
                 assertEquals("id", info.getColumnInfo().get(0).getName());
 
-                CompletableFuture<List<Object>> multi = new CompletableFuture<>();
+                CompletableFuture<List<SqlResult>> multi = new CompletableFuture<>();
                 db.executeMulti("compat.two", Map.of("id", "alpha"),
                         DataConnector.MODE_SELECT, multi::complete, multi::completeExceptionally);
-                List<Object> outputs = multi.get(10, TimeUnit.SECONDS);
+                List<SqlResult> outputs = multi.get(10, TimeUnit.SECONDS);
                 assertEquals(2, outputs.size());
-                assertNull(outputs.get(0));
-                @SuppressWarnings("unchecked")
-                List<SqlRow> rows = (List<SqlRow>) outputs.get(1);
-                assertEquals(4, rows.get(0).getLong("score"));
+                assertInstanceOf(SqlGenericResult.class, outputs.get(0));
+                SqlSelectResult selected = assertInstanceOf(SqlSelectResult.class, outputs.get(1));
+                assertEquals(4, selected.getRows().get(0).getLong("score"));
 
-                CompletableFuture<List<Object>> raw = new CompletableFuture<>();
+                CompletableFuture<List<SqlResult>> raw = new CompletableFuture<>();
                 db.executeImplRaw(List.of("UPDATE compat SET score=score+1 WHERE id=:id",
                                 "SELECT score FROM compat WHERE id=:id"),
                         List.of(Map.of("id", "alpha"), Map.of("id", "alpha")),
                         List.of(DataConnector.MODE_CHANGE, DataConnector.MODE_SELECT),
                         raw::complete, raw::completeExceptionally);
-                assertEquals(2, raw.get(10, TimeUnit.SECONDS).size());
+                List<SqlResult> rawResults = raw.get(10, TimeUnit.SECONDS);
+                assertInstanceOf(SqlChangeResult.class, rawResults.get(0));
+                assertInstanceOf(SqlSelectResult.class, rawResults.get(1));
 
                 db.loadQuery("compat.raw", "SELECT score FROM compat WHERE id=:id");
                 assertEquals(5L, db.asyncSelect("compat.raw", Map.of("id", "alpha"))
