@@ -20,6 +20,7 @@ dependencies {
         isTransitive = false // Server provides its own runtime dependencies.
     }
     implementation("io.github.mykoss:asyncsql:0.1.0-SNAPSHOT")
+    implementation("io.github.mykoss:asyncsql-nukkit-mot:0.1.0-SNAPSHOT")
     implementation("org.xerial:sqlite-jdbc:3.49.1.0")
 }
 

@@ -62,6 +62,8 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Build Nukkit-MOT libasynql adapter
+        run: gradle -p adapters/nukkit-mot clean build publishToMavenLocal --no-daemon
       - name: Compile shaded Nukkit-MOT beta demo plugin
         run: |
           gradle -p examples/nukkit-mot clean shadowJar --no-daemon
@@ -79,3 +81,4 @@ jobs:
           path: |
             build/libs/*.jar
             examples/nukkit-mot/build/libs/*-all.jar
+            adapters/nukkit-mot/build/libs/*.jar

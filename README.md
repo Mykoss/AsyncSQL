@@ -153,3 +153,6 @@ El formato PSF de la beta cubre sus funciones habituales, pero **no reproduce to
 Revisa [la matriz de compatibilidad](docs/COMPATIBILITY.md) y [el plan de pruebas para testers](docs/BETA_TESTING.md). La primera publicación en Maven Central sigue pendiente.
 
 Licencia: [Apache-2.0](LICENSE).
+
+
+Para desarrolladores de PocketMine/libasynql: [guía de migración a Nukkit-MOT con DataConnector, PSF y callbacks](docs/LIBASYNQL_MIGRATION.md).

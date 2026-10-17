@@ -34,7 +34,7 @@ import java.util.concurrent.CompletionException;
 public final class AsyncSql implements AutoCloseable {
     private final HikariDataSource source;
     private final ExecutorService workers;
-    private final Map<String, SqlQuery> queries;
+    private final Map<String, SqlQuery> queries = new ConcurrentHashMap<>();
     private final Set<CompletableFuture<?>> pending = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean closed = new AtomicBoolean();
 
@@ -48,7 +48,7 @@ public final class AsyncSql implements AutoCloseable {
         if (builder.workerLimit < 1 || builder.queueLimit < 1) {
             throw new IllegalArgumentException("Worker and queue limits must be positive");
         }
-        this.queries = Map.copyOf(builder.catalog.compiledQueries());
+        this.queries.putAll(builder.catalog.compiledQueries());
 
         HikariConfig config = new HikariConfig();
         config.setJdbcUrl(builder.jdbcUrl);
@@ -89,6 +89,94 @@ public final class AsyncSql implements AutoCloseable {
 
     public CompletableFuture<List<SqlRow>> executeSelect(String query, Map<String, ?> parameters) {
         return submit(query, parameters, SqlQuery.Mode.SELECT);
+    }
+
+    /** Load additional PSF or simple query statements at runtime. Duplicate names fail. */
+    public synchronized void loadQueries(SqlCatalog catalog) {
+        Objects.requireNonNull(catalog, "catalog");
+        if (closed.get()) throw new IllegalStateException("AsyncSQL is closed");
+        Map<String, SqlQuery> extra = catalog.compiledQueries();
+        for (String name : extra.keySet()) {
+            if (queries.containsKey(name)) throw new IllegalArgumentException("Duplicate SQL query: " + name);
+        }
+        queries.putAll(extra);
+    }
+
+    public void loadQuery(String name, String sql) {
+        loadQueries(new SqlCatalog().register(name, sql));
+    }
+
+    public void loadQueryFile(String psfContent, String dialect) {
+        loadQueries(SqlCatalog.parsePsf(psfContent, dialect));
+    }
+
+    public CompletableFuture<SqlSelectResult> executeSelectWithInfo(String query, Map<String, ?> parameters) {
+        return submit(query, parameters, SqlQuery.Mode.SELECT_INFO);
+    }
+
+    /** Execute every PSF fragment and retrieve all results in declaration order. */
+    public CompletableFuture<List<Object>> executeMulti(String name, Map<String, ?> args,
+                                                          List<String> modes) {
+        SqlQuery query = queries.get(name);
+        if (query == null) return CompletableFuture.failedFuture(
+                new IllegalArgumentException("Unknown SQL query: " + name));
+        if (closed.get()) return CompletableFuture.failedFuture(new IllegalStateException("AsyncSQL is closed"));
+        List<SqlQuery.Mode> parsed = modes.stream().map(mode ->
+                SqlQuery.Mode.valueOf(mode.toUpperCase(java.util.Locale.ROOT))).toList();
+        Map<String, ?> parameters = Collections.unmodifiableMap(
+                new LinkedHashMap<>(Objects.requireNonNull(args, "args")));
+        CompletableFuture<List<Object>> future = track(new CompletableFuture<>());
+        try {
+            workers.execute(() -> {
+                try (Connection connection = source.getConnection()) {
+                    future.complete(query.executeMulti(connection, parameters, parsed));
+                } catch (Throwable error) {
+                    future.completeExceptionally(error);
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            future.completeExceptionally(e);
+        }
+        return future;
+    }
+
+    /**
+     * Run raw JDBC statements without adding them to the public catalog.
+     * Mode list must match the number of statements. Each statement is a
+     * parameterized single SQL operation, never string-concatenated values.
+     */
+    public CompletableFuture<List<Object>> executeImplRaw(List<String> sql, List<Map<String, ?>> params,
+                                                            List<String> modes) {
+        if (closed.get()) return CompletableFuture.failedFuture(new IllegalStateException("AsyncSQL is closed"));
+        if (sql.isEmpty() || sql.size() != params.size() || sql.size() != modes.size()) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException(
+                    "Expected matching non-empty SQL, parameter and mode lists"));
+        }
+        List<SqlQuery> queriesSnapshot = sql.stream()
+                .map(s -> new SqlQuery(List.of(s), Map.of())).toList();
+        List<SqlQuery.Mode> parsed = modes.stream()
+                .map(m -> SqlQuery.Mode.valueOf(m.toUpperCase(java.util.Locale.ROOT))).toList();
+        List<Map<String, ?>> values = new ArrayList<>();
+        for (Map<String, ?> parameterSet : params) {
+            values.add(Collections.unmodifiableMap(new LinkedHashMap<>(parameterSet)));
+        }
+        CompletableFuture<List<Object>> future = track(new CompletableFuture<>());
+        try {
+            workers.execute(() -> {
+                try (Connection connection = source.getConnection()) {
+                    List<Object> results = new ArrayList<>();
+                    for (int i = 0; i < queriesSnapshot.size(); i++) {
+                        results.add(queriesSnapshot.get(i).execute(connection, values.get(i), parsed.get(i)));
+                    }
+                    future.complete(Collections.unmodifiableList(results));
+                } catch (Throwable error) {
+                    future.completeExceptionally(error);
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            future.completeExceptionally(e);
+        }
+        return future;
     }
 
     /** Snapshot of queries accepted but not yet completed, for diagnostics. */
