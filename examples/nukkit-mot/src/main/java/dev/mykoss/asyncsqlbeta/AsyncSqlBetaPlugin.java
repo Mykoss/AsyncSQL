@@ -6,7 +6,7 @@ import cn.nukkit.command.CommandSender;
 import cn.nukkit.plugin.PluginBase;
 import io.github.mykoss.asyncsql.AsyncSql;
 import io.github.mykoss.asyncsql.DataConnector;
-import io.github.mykoss.asyncsql.DataConnectorImpl;
+import io.github.mykoss.asyncsql.nukkit.Libasynql;
 import io.github.mykoss.asyncsql.SqlCatalog;
 import io.github.mykoss.asyncsql.SqlRow;
 
@@ -40,8 +40,15 @@ public final class AsyncSqlBetaPlugin extends PluginBase {
             database = AsyncSql.builder("jdbc:sqlite:" + new File(dataFolder, "wallets.db").getAbsolutePath())
                     .driverClassName("org.sqlite.JDBC")
                     .catalog(queries).workerLimit(1).queueLimit(128).build();
-            compatible = new DataConnectorImpl(database, "sqlite", mainThread(),
-                    java.util.logging.Logger.getLogger("AsyncSQLBetaDemo"));
+            // Dedicated SQLite file to test the libasynql-style factory/callback API.
+            // It cannot interfere with the existing transactional /asqlbeta wallet.
+            compatible = Libasynql.create(this, Map.of(
+                    "type", "sqlite", "sqlite", Map.of("file", "compat.sqlite"),
+                    "worker-limit", 1
+            ), Map.of("sqlite", "db/sqlite.sql"));
+            compatible.executeGeneric("schema.init", Map.of(),
+                    () -> getLogger().info("AsyncSQL compatibility connector initialized"),
+                    error -> getLogger().error("Compatibility DB init failed", error));
             database.executeGeneric("schema.init", Map.of())
                     .whenCompleteAsync((ignored, error) -> {
                         if (error != null) getLogger().error("SQLite schema init failed", error);
@@ -66,12 +73,18 @@ public final class AsyncSqlBetaPlugin extends PluginBase {
         }
         String uuid = player.getUniqueId().toString();
         if (args.length > 0 && args[0].equalsIgnoreCase("compat")) {
-            compatible.executeSelectWithInfo("wallet.find", Map.of("uuid", uuid), info -> {
-                if (!player.isOnline()) return;
-                player.sendMessage("libasynql-style callback: rows=" + info.getRows().size()
-                        + " columns=" + info.getColumnInfo().size()
-                        + " on main server thread");
-            }, error -> {
+            compatible.executeGeneric("wallet.ensure", Map.of("uuid", uuid), () ->
+                    compatible.executeChange("wallet.increment", Map.of("uuid", uuid), count ->
+                            compatible.executeSelectWithInfo("wallet.find", Map.of("uuid", uuid), info -> {
+                                if (!player.isOnline()) return;
+                                long coins = info.getRows().get(0).getLong("coins");
+                                player.sendMessage("libasynql Java OK: coins=" + coins
+                                        + ", columns=" + info.getColumnInfo().size());
+                            }, error -> {
+                                if (player.isOnline()) player.sendMessage("SQL error: " + error.getErrorMessage());
+                            }), error -> {
+                        if (player.isOnline()) player.sendMessage("SQL error: " + error.getErrorMessage());
+                    }), error -> {
                 if (player.isOnline()) player.sendMessage("SQL error: " + error.getErrorMessage());
             });
             return true;
