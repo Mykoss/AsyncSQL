@@ -5,6 +5,8 @@ import cn.nukkit.command.Command;
 import cn.nukkit.command.CommandSender;
 import cn.nukkit.plugin.PluginBase;
 import io.github.mykoss.asyncsql.AsyncSql;
+import io.github.mykoss.asyncsql.DataConnector;
+import io.github.mykoss.asyncsql.DataConnectorImpl;
 import io.github.mykoss.asyncsql.SqlCatalog;
 import io.github.mykoss.asyncsql.SqlRow;
 
@@ -18,6 +20,7 @@ import java.util.concurrent.Executor;
  */
 public final class AsyncSqlBetaPlugin extends PluginBase {
     private AsyncSql database;
+    private DataConnector compatible;
 
     @Override
     public void onEnable() {
@@ -37,6 +40,8 @@ public final class AsyncSqlBetaPlugin extends PluginBase {
             database = AsyncSql.builder("jdbc:sqlite:" + new File(dataFolder, "wallets.db").getAbsolutePath())
                     .driverClassName("org.sqlite.JDBC")
                     .catalog(queries).workerLimit(1).queueLimit(128).build();
+            compatible = new DataConnectorImpl(database, "sqlite", mainThread(),
+                    java.util.logging.Logger.getLogger("AsyncSQLBetaDemo"));
             database.executeGeneric("schema.init", Map.of())
                     .whenCompleteAsync((ignored, error) -> {
                         if (error != null) getLogger().error("SQLite schema init failed", error);
@@ -60,6 +65,17 @@ public final class AsyncSqlBetaPlugin extends PluginBase {
             return true;
         }
         String uuid = player.getUniqueId().toString();
+        if (args.length > 0 && args[0].equalsIgnoreCase("compat")) {
+            compatible.executeSelectWithInfo("wallet.find", Map.of("uuid", uuid), info -> {
+                if (!player.isOnline()) return;
+                player.sendMessage("libasynql-style callback: rows=" + info.getRows().size()
+                        + " columns=" + info.getColumnInfo().size()
+                        + " on main server thread");
+            }, error -> {
+                if (player.isOnline()) player.sendMessage("SQL error: " + error.getErrorMessage());
+            });
+            return true;
+        }
         player.sendMessage("Testing AsyncSQL asynchronously...");
         database.executeTransaction(tx -> {
             tx.executeGeneric("wallet.ensure", Map.of("uuid", uuid));
@@ -80,6 +96,7 @@ public final class AsyncSqlBetaPlugin extends PluginBase {
 
     @Override
     public void onDisable() {
-        if (database != null) database.close();
+        if (compatible != null) compatible.close();
+        else if (database != null) database.close();
     }
 }

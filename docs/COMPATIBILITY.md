@@ -17,11 +17,11 @@
 | Errores | SqlError y onError PHP | CompletableFuture completado excepcionalmente |
 | Retornar al hilo principal | Callbacks integrados a PocketMine | Executor del scheduler explícito |
 | waitAll | Bloqueante | awaitPending y waitAll (NO en tick de servidor) |
-| Registro de queries | Logger con setLoggingQueries | Aún no implementado en la API |
-| Column metadata | SqlColumnInfo / selectWithInfo | SqlRow con nombre/valor; metadata avanzada pendiente |
-| executeMulti / executeImplRaw | Incluidos | No hay acceso a todos los resultados por fragmento |
-| LoadQueryFile en runtime | Sí | Carga de SqlCatalog al crear el cliente |
-| Factory desde config.yml | libasynql::create(plugin, config, resources) | AsyncSql.builder(jdbcUrl) y SqlCatalog.fromPsfResource(...) |
+| Registro de queries | Logger con setLoggingQueries | Sí, via DataConnector (sin exponer valores sensibles) |
+| Column metadata | SqlColumnInfo / selectWithInfo | SqlSelectResult + SqlColumnInfo con tipos JDBC portables |
+| executeMulti / executeImplRaw | Incluidos | Compatibilidad DataConnector con los resultados por fragmento |
+| LoadQueryFile en runtime | Sí | DataConnector.loadQueryFile + loadQuery, valida duplicados |
+| Factory desde config.yml | libasynql::create(plugin, config, resources) | Libasynql.create(dataFolder, resourcesClass, config, sqlMap, scheduler, logger), requiere adaptador de hilo principal |
 | Opciones SSL MySQL | Clases mysqli propias | Opciones JDBC en la URL/driver |
 | Compatibilidad Nukkit-MOT | No (es PHP PocketMine) | Plugin demostración empaquetado, pendiente de prueba in-game |
 
